@@ -1,0 +1,48 @@
+<settings>
+
+mode: random
+
+<variables>
+
+<random>
+
+<starting-play-time>
+min: 15
+max: 20
+</starting-play-time>
+
+<number-of-games-until-time-decrease>
+min: 2
+max: 5
+</number-of-games-until-time-decrease>
+
+<decrease-time-by>
+min: 10
+max: 15
+</decrease-time-by>
+
+</random>
+
+<constant>
+starting-play-time: 200
+number-of-games-until-decrease: 5
+decrease-time-by: 10
+</constant>
+
+absolute-min-play-time: 10
+
+</variables>
+
+<emulators-to-use>
+nestopia: yes
+snes9x: no
+fusion: no
+</emulators-to-use>
+
+<save-slots-to-use>
+nestopia: 9
+snes9x: 9
+fusion: 0
+</save-slots-to-use>
+
+</settings>
