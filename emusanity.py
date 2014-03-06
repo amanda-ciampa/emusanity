@@ -1,3 +1,10 @@
+#!/usr/bin/env python
+#title           :emusanity.py
+#description     :Chaotic content discovery system compatible with a multitude of emulators
+#author          :John Broderick
+#python_version  :3.3.4
+#=============================================================================
+
 import time
 import glob
 import random
@@ -7,7 +14,8 @@ import win32com.client
 import win32api
 
 debug = False
-recyclePlayedGames = False
+
+recyclePlayedGames = False #If set to False, games already played during current session will not reappear until the array of games for that particular emualtor is empty.
 
 #Name of Settings File
 settings = "settings.txt"
@@ -18,6 +26,10 @@ filePos = 0
 #Variable to save position of tag in settings file so parser can go back to it
 savedTagPos = 0
 
+# filename = name of file to open
+# fieldTypes:
+#   0 = look for and return the position of a tag (i.e. <emulators>)
+#   1 = look for a setting and return a 2D array (i.e. mode: random) 
 def getFromFile(filename, fieldType, lookFor):
     file = open(filename, 'r')
 
@@ -58,7 +70,6 @@ def getFromFile(filename, fieldType, lookFor):
             
         #Get all settings from within a tag
         elif fieldType == 2:
-            #TODO: Scan tag from start to end for fields and variables, store them in an array(s) using split. Return this array
             fieldArray = []
             parameterArray = []
             while endLookFor not in line:
@@ -110,7 +121,7 @@ elif mode == "constant":
     numGameUntilDecrease = getFromFile(settings, 1, "number-of-games-until-decrease")
     decreaseTimeBy = getFromFile(settings, 1, "decrease-time-by")
 
-filePos = 0
+filePos = 0 #Set position back to the beginning of the file
 filePos = getFromFile(settings, 0, "variables")
 absoluteMinPlayTime = decreaseTimeByMin = getFromFile(settings, 1, "absolute-min-play-time")
 
@@ -122,8 +133,9 @@ saveSlotsToUse = getFromFile(settings, 2, "save-slots-to-use")
 
 emulatorsToUse = parse2DArray(emulatorsToUse, "yes", 1, 0)
 
-print (emulatorsToUse)
-print (saveSlotsToUse)
+if debug:
+    print (emulatorsToUse)
+    print (saveSlotsToUse)
 
 pos = 0
 emulatorArray = []
@@ -165,7 +177,6 @@ shell = win32com. client.Dispatch("WScript.Shell")
 #if mode == random:
     
 while True:
-    print ("ohai")
     if mode == random:
         playTime = randint(playTimeMin, playTimeMax)
         numGamesUntilDecrease = randint(numGamesUntilDecreaseMin, numGamesUntilDecreaseMax)
@@ -254,12 +265,11 @@ while True:
 
     if debug:
         print ("Save State Name" + saveStateName)
-        #Send keystrokes to emulator to save state
+    #Send keystrokes to emulator to save state
     shell.SendKeys(saveStateKey)
     os.chdir(saveStateDirectory)
     print (saveStateDirectory)
     #while saveDate == time.ctime(os.path.getmtime(saveStateName)):
     #    pass
-    print ("hello after")
     
     emulatorParameters[emulatorToUse][7] = romArray
