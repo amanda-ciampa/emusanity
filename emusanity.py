@@ -1,275 +1,94 @@
-#!/usr/bin/env python
-#title           :emusanity.py
-#description     :Chaotic content discovery system compatible with a multitude of emulators
-#author          :John Broderick
-#python_version  :3.3.4
-#=============================================================================
-
-import time
-import glob
-import random
 import os
+import time
+import random
 from random import randint
-import win32com.client
-import win32api
+import glob
+import subprocess
+import win32com.client as comclt
+import copy
 
-debug = False
+wsh= comclt.Dispatch("WScript.Shell") #for .SendKeys()
 
-recyclePlayedGames = False #If set to False, games already played during current session will not reappear until the array of games for that particular emualtor is empty.
+#BEGIN SETTINGS
 
-#Name of Settings File
-settings = "settings.txt"
-emulators = "emulators.txt"
+enableDebug = True
+playAllGamesBeforeRepeating = True
 
-#Variable to store current position in settins file so parser can go back to it
-filePos = 0
-#Variable to save position of tag in settings file so parser can go back to it
-savedTagPos = 0
+#Play time ranges in seconds
+minPlayTime = 5
+maxPlayTime = 10
 
-# filename = name of file to open
-# fieldTypes:
-#   0 = look for and return the position of a tag (i.e. <emulators>)
-#   1 = look for a setting and return a 2D array (i.e. mode: random) 
-def getFromFile(filename, fieldType, lookFor):
-    file = open(filename, 'r')
+#mappings for configs. These correlate to array positions in the configs.
+platformName = 0
+emulator = 1
+gamePath = 2
+gameExtensions = 3
+games = 4
+saveStateKey = 5
+loadStateKey = 6
+loadStateDelay = 7
 
-    file.seek(filePos)
+global configs
+configs = [
+["NES", "Z:\Emulators\emusanity\\nestopia\\nestopia.exe", "Z:\ROMs & ISOs\\NES1\\", ["nes"], [], "+1", "1", 1],
+#["N64", "Z:\Emulators\emusanity\Project64\Project64.exe", "Z:\ROMs & ISOs\\N64\\", ["z64"], [], "{F5}", "{F7}", 2],
+##["Z:\ROMs & ISOs\SNES", "Z:\ROMs & ISOs\SNES", ["smc"], []]
+#["Genesis", "Z:\Emulators\emusanity\Kega Fusion\Fusion.exe", "Z:\ROMs & ISOs\Genesis\\", ["gen"], [], "{F5}", "{F8}",1],
+["GameCube", "Z:\Emulators\emusanity\Dolphin-x64\Dolphin.exe", "Z:\ROMs & ISOs\Gamecube\\", ["gcm"], [], "+{F1}", "{F1}", 3]
+]
 
-    #Encase lookFor in angle brackets if looking for a tag
-    if fieldType == 0 or fieldType == 2:
-        lookFor = '<' + lookFor + '>'
-        if fieldType == 2:
-            endLookFor = lookFor[:1] + '/' + lookFor[1:]
-        
-    ##Use while loop to read file
-    ##for loop caused an OSError with file.tell()
-    while True:
-        line = " "
-        if fieldType != 2:
-            line = file.readline()
-        if not line:
-            break
+#END SETTINGS DO NOT EDIT BELOW HERE
 
-        #Look for a tag
-        if fieldType == 0:
-            if lookFor in line:
-                curFilePos = file.tell()
-                return curFilePos
-                
-        #Look for a setting
-        elif fieldType == 1:
-            if lookFor in line:
-                #seperate the field from the parameter
-                line = line.split(":")[1]
-                #Remove whitespace
-                line = line.strip()
-                #Return the parameter to be used
-                if debug:
-                    print ("Variable Get: " + line)
-                return line
-            
-        #Get all settings from within a tag
-        elif fieldType == 2:
-            fieldArray = []
-            parameterArray = []
-            while endLookFor not in line:
-                line = file.readline()
-                if endLookFor not in line:
-                    #if debug:
-                    print (line)
-                    tempArray = line.split()
-                    fieldArray.append(tempArray[0][:-1]) #removes ':' from end of field
-                    parameterArray.append(tempArray[1])
-            return [fieldArray,parameterArray] #return fields and parameters as a two-dimensional array
+#Begin Functions
+def debug(debugMessage):
+    if enableDebug:
+        print(debugMessage)
 
-def parse2DArray(array, keepTerm, sideToCompare, sideToKeep):
-    pos = 0
-    parsedArray = []
-    while pos < len(array[0]):
-        if array[sideToCompare][pos] == keepTerm:
-            parsedArray.append(array[sideToKeep][pos])
-        pos += 1
-    return parsedArray
+#End Functions
 
-#Get the mode from settings file. Can be "random" or "constant"
-mode = getFromFile(settings, 1, "mode")
+print("Populating rom lists...")
+for platform in configs:
+    os.chdir(platform[gamePath])
+    for extension in platform[gameExtensions]:
+        print ("Checking for " + platform[platformName] + " games...")
+        platform[games] += glob.glob('*.' + extension)
+print("Complete!")
 
-#save position the random or constant tags depending on the mode set
-filePos = getFromFile(settings, 0, mode)
-savedTagPos = filePos
+global originalConfigs
+if playAllGamesBeforeRepeating:
+    originalConfigs = copy.deepcopy(configs) #save a copy of configs
 
-if mode == "random":
-    
-    filePos = savedTagPos #Go back to <random> tag
-    filePos = getFromFile(settings, 0, "starting-play-time")
-    playTimeMin = getFromFile(settings, 1, "min")
-    playTimeMax = getFromFile(settings, 1, "max")
-
-    filePos = savedTagPos #Go back to <random> tag
-    filePos = getFromFile(settings, 0, "number-of-games-until-time-decrease")
-    numGamesUntilTimeDecrease = getFromFile(settings, 1, "min")
-    numGamesUntilTimeDecrease = getFromFile(settings, 1, "max")
-
-    filePos = savedTagPos #Go back to <random> tag
-    filePos = getFromFile(settings, 0, "decrease-time-by")
-    decreaseTimeByMin = getFromFile(settings, 1, "min")
-    decreaseTimeByMax = getFromFile(settings, 1, "max")
-
-elif mode == "constant":
-    filePos = savedTagPos #Go back to <constant> tag
-    playTime = getFromFile(settings, 1, "starting-play-time")
-    numGameUntilDecrease = getFromFile(settings, 1, "number-of-games-until-decrease")
-    decreaseTimeBy = getFromFile(settings, 1, "decrease-time-by")
-
-filePos = 0 #Set position back to the beginning of the file
-filePos = getFromFile(settings, 0, "variables")
-absoluteMinPlayTime = decreaseTimeByMin = getFromFile(settings, 1, "absolute-min-play-time")
-
-filePos = getFromFile(settings, 0, "emulators-to-use")
-emulatorsToUse = getFromFile(settings, 2, "emulators-to-use")
-
-filePos = getFromFile(settings, 0, "save-slots-to-use")
-saveSlotsToUse = getFromFile(settings, 2, "save-slots-to-use")
-
-emulatorsToUse = parse2DArray(emulatorsToUse, "yes", 1, 0)
-
-if debug:
-    print (emulatorsToUse)
-    print (saveSlotsToUse)
-
-pos = 0
-emulatorArray = []
-romArray = []
-
-while pos < len(emulatorsToUse):
-    index = saveSlotsToUse[0].index(emulatorsToUse[pos])
-    emulatorArray.append([saveSlotsToUse[0][pos], [saveSlotsToUse[1][pos]]])
-    pos += 1
-
-emulatorParameters = []
-pos = 0
-filePos = 0
-while pos < len(emulatorArray):
-    tempArray2 = []
-    print (str(emulatorArray[pos][1]))
-    filePos = getFromFile(emulators, 0 , str(emulatorArray[pos][0]))
-    print (filePos)
-    filePos = getFromFile(emulators, 0, "directories")
-    tempArray2.append( emulatorArray[pos][0] )
-    tempArray2.extend( getFromFile(emulators, 2, "directories")[1])
-    filePos = 0
-    filePos = getFromFile(emulators, 0, emulatorArray[pos][0])
-    tempArray2.append(getFromFile(emulators,1,"rom-extension"))
-    emulatorName = "slot-" + str(emulatorArray[pos][1][0])
-    print (emulatorName)
-    filePos = getFromFile(emulators, 0, emulatorName)
-    tempArray2.extend( getFromFile(emulators, 2, emulatorName)[1] )
-    tempArray2.append([])
-    emulatorParameters.append( tempArray2 )
-    filePos = 0
-    pos += 1
-#Result: 2 dimensional array of emulators with their paths, save extension, save/load keys
-#emulator name, rom directory, save directory, save extension, save state key, load state key
-print (emulatorParameters)
-
-shell = win32com. client.Dispatch("WScript.Shell")
-
-#if mode == random:
-    
 while True:
-    if mode == random:
-        playTime = randint(playTimeMin, playTimeMax)
-        numGamesUntilDecrease = randint(numGamesUntilDecreaseMin, numGamesUntilDecreaseMax)
-        decreaseTimeBy = randint(decreaseTimeByMin, decreaseTimeByMax)
-        if (playTimeMin >= absoluteMinPlayTime and numGamesUntilDecrease < 1):
-            decreaseTimeBy = randint(decreaseTimeByMin, decreaseTimeByMax)
-            playTimeMin -= decreaseTimeBy
-            playTimeMax -= decreaseTimeBy
-            while (playTimeMax < 1 or playTimeMin < 1):
-                playTimeMin += 1
-                playTimeMax +=1
-            numGamesUntilDecrease = randint(numGamesUntilDecreaseMin, numGamesUntilDecreaseMax)
-        else:
-            numGamesUntilDecrease -= 1
-            
-    playTime = randint(int(playTimeMin), int(playTimeMax))
-
-    emulatorToUse = randint(0,len(emulatorParameters)-1)
-    print (emulatorToUse)
-    emulatorName = emulatorParameters[emulatorToUse][0]
-    romDirectory = emulatorParameters[emulatorToUse][1]
-    saveStateDirectory = emulatorParameters[emulatorToUse][2]
-    romExtension = emulatorParameters[emulatorToUse][3]
-    saveStateExtension = emulatorParameters[emulatorToUse][4]
-    saveStateKey = emulatorParameters[emulatorToUse][5]
-    loadStateKey = emulatorParameters[emulatorToUse][6]
-    romArray = emulatorParameters[emulatorToUse][7]
-    print (romDirectory)
-
-    shell.AppActivate(emulatorName)
-
-    #Populate Rom Array
-    os.chdir(romDirectory)
-    if len(romArray) < 1:
-        romArray = glob.glob('*' + romExtension)
-        print (romArray)
-        if len(romArray) < 1:
-            print("**Error: No files.")
-            exit(1)
-
-    romIndex = random.randrange(0, len(romArray))
-    selectedRom = romArray[romIndex]
-    if not recyclePlayedGames:
-        del romArray[romIndex]
-
-    #Generate file name to be used for save state
-    #Truncate the file extension of the rom so  that a save state extension can be appended
-    saveStateName = selectedRom[:len(selectedRom)-4]
-    #Append file extension to saveStateName
-    saveStateName += saveStateExtension
-    if debug:
-        print('Save name is: ' + saveStateName)
+    #load game
+    platform = randint(0, len(configs)-1) #Select a platform (Ex: NES, SNES, Genesis)
+    debug("platform = " + configs[platform][platformName])
+    processName = configs[platform][emulator].rsplit('\\', 1)[1] #Grab process name from executable in path (Ex: nestopia.exe)
+    debug("processName = " + processName)
+    subprocess.call(['taskkill', '/im', processName, '/f'], shell=True) #Force kill process of currently selected platform in case it may already be open to avoid conflicts. Suppress console output
+    gamePos = randint(0, len(configs[platform][games])-1) #Generate random number to select game from platform list with
+    curGame = configs[platform][games][gamePos] #Use randomly generated number to select a game from the list of games and get it's filename
+    debug("curGame = " + curGame)
+    subprocess.Popen([configs[platform][emulator], configs[platform][gamePath] + configs[platform][games][gamePos]]) #Open game in the proper emulator
+    time.sleep(configs[platform][loadStateDelay]) #Allow game time to open in emulator before loading state
+    wsh.SendKeys(configs[platform][loadStateKey]) #Send key(s) to load state
+    playTime = randint(minPlayTime, maxPlayTime) #Determine how long the next loaded game will be played for using a random number between defined ranges in settings
+    debug("playTime = " + str(playTime))
+    while playTime > 0: #stay in loop until playTime reaches zero
+        if playTime == 3: #Save state when only three seconds remain
+            wsh.SendKeys(configs[platform][saveStateKey]) #Send key(s) to save state
+        time.sleep(1) #Sleep for 1 second
+        playTime -= 1 #decrement playTime by 1 until it reaches zero
+    subprocess.call(['taskkill', '/im', processName, '/f'], shell=True) #Force kill process of currently selected platform. Suppress console output
     
-    #Open Rom
-    os.startfile(selectedRom)
-    
-    #Check if save state exists
-    os.chdir(saveStateDirectory)
-    if len(glob.glob(saveStateName)) > 0:   
-        saveStateExists = True
-        if debug:
-            print ("saveStateExists = True")
-    else:
-        saveStateExists = False
-        if debug:
-            print("saveStateExists = False")
-    
-    time.sleep(0.2)
-    
-    #Load State
-    #If a save state already exists
-    if saveStateExists:
-        if debug:
-            print ("Load State Name" + saveStateName)
-        #Send keystrokes to emulator to load state
-        shell.SendKeys(loadStateKey)
-        #If a save state does not already exist
-    else:
-        #Create a dummy savestate file so the date can still be compared for when waitForSaveDateChange is run
-        open(saveStateName, 'a').close()
-    saveDate = time.ctime(os.path.getmtime(saveStateName))
-
-    if debug:
-        print ("Time Until Change: " + str(timeUntilChange))
-    time.sleep(playTime)
-
-    if debug:
-        print ("Save State Name" + saveStateName)
-    #Send keystrokes to emulator to save state
-    shell.SendKeys(saveStateKey)
-    os.chdir(saveStateDirectory)
-    print (saveStateDirectory)
-    #while saveDate == time.ctime(os.path.getmtime(saveStateName)):
-    #    pass
-    
-    emulatorParameters[emulatorToUse][7] = romArray
+    if playAllGamesBeforeRepeating: #Go in here if we are not reusing games until they have all been played
+        configs[platform][games].pop(gamePos) #Remove the game we just played from the game list for the current platform being played
+        debug("Games Remaining = " + str(len(configs[platform][games])))
+        if len(configs[platform][games]) < 1: #If game list has been depleted from a particular platform
+            debug(configs)
+            configs.pop(platform) #Remove the platform from the playlist
+            debug(configs)
+            if len(configs) < 1: #If all games from all platforms have been played and there are no platforms remaining
+                debug(configs)
+                configs = copy.deepcopy(originalConfigs) #copy the original config back, thus restoring all games
+                debug(configs)
+                print("Configs deplted. Restoring original configs")
